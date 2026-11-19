@@ -213,7 +213,10 @@ function zoneStyle() {
 function loadSharedZones(data) {
   zones.clearLayers();
   if (!data || data.type !== 'FeatureCollection') return;
-  L.geoJSON(data, { style: zoneStyle }).addTo(zones);
+  const geojsonLayer = L.geoJSON(data, { style: zoneStyle });
+  // Add each polygon directly to the feature group so the coverage checker
+  // can inspect its geometry (rather than seeing only the GeoJSON wrapper).
+  geojsonLayer.eachLayer(layer => zones.addLayer(layer));
 }
 
 async function fetchSharedZones() {
