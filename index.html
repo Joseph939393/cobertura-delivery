@@ -7,7 +7,7 @@
 <title>Cobertura de Delivery | Lima y Callao</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+
 
 <style>
 * { box-sizing: border-box; }
@@ -159,7 +159,7 @@ footer {
 <main>
 
   <section class="panel">
-    <h2>¿A dónde deseas realizar tu entrega?</h2>
+    <h2>Consulta de cobertura para el equipo</h2>
 
     <div class="search-row">
       <input id="address" type="text"
@@ -179,54 +179,20 @@ footer {
 
     <div class="legend">
       <span><i class="dot" style="background:#16834c"></i>Dentro de cobertura</span>
-      <span><i class="dot" style="background:#d93636"></i>Fuera de cobertura</span>
+      <span>Sin color: coordinar disponibilidad contigo</span>
     </div>
   </section>
 
-  <section class="panel admin">
-    <h2>⚙️ Administración de zonas</h2>
 
-    <small>
-      Dibuja áreas sobre el mapa. Selecciona primero el tipo
-      de zona y luego utiliza la herramienta de polígono
-      que aparece en el mapa. Puedes dibujar varias áreas.
-    </small>
-
-    <div class="admin-row">
-      <select id="zoneType">
-        <option value="green">Zona CON cobertura</option>
-        <option value="red">Zona SIN cobertura</option>
-      </select>
-
-      <button class="green" onclick="exportZones()">
-        Exportar zonas
-      </button>
-
-      <button class="gray" onclick="clearZones()">
-        Borrar zonas
-      </button>
-    </div>
-
-    <small>
-      Las zonas dibujadas se guardan en este navegador.
-      Usa Exportar zonas para obtener una copia y conservar
-      tu trabajo.
-    </small>
-
-    <div class="admin-row">
-      <input type="file" id="importFile" accept=".json,application/json">
-      <button onclick="importZones()">Importar zonas</button>
-    </div>
-  </section>
 
 </main>
 
 <footer>
-  Verificador de cobertura de Lima y Callao
+  Uso interno · Hosanna Store · Lima y Callao
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
 
 <script>
 const map = L.map('map').setView([-12.075, -77.055], 11);
@@ -237,102 +203,33 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const zones = L.featureGroup().addTo(map);
-
 let marker = null;
 let lastSearch = null;
 
-function zoneStyle(type) {
-  const color = type === 'green' ? '#16834c' : '#d93636';
-  return {
-    color: color,
-    fillColor: color,
-    fillOpacity: 0.30,
-    weight: 2
-  };
+function zoneStyle() {
+  return { color: '#16834c', fillColor: '#16834c', fillOpacity: 0.30, weight: 2 };
 }
 
-function addZone(layer, type) {
-  layer.zoneType = type;
-  layer.setStyle(zoneStyle(type));
-  zones.addLayer(layer);
-  saveLocal();
+function loadSharedZones(data) {
+  zones.clearLayers();
+  if (!data || data.type !== 'FeatureCollection') return;
+  L.geoJSON(data, { style: zoneStyle }).addTo(zones);
 }
 
-function saveLocal() {
-  const data = zones.toGeoJSON();
-  data.features.forEach((feature, i) => {
-    feature.properties = {
-      zoneType: zones.getLayers()[i].zoneType || 'green'
-    };
-  });
-
-  localStorage.setItem('deliveryZones', JSON.stringify(data));
-}
-
-function loadLocal() {
-  const saved = localStorage.getItem('deliveryZones');
-  if (!saved) return;
-
+async function fetchSharedZones() {
   try {
-    loadGeoJSON(JSON.parse(saved));
+    const response = await fetch('./zonas-cobertura.json?v=' + Date.now());
+    if (!response.ok) throw new Error('No se pudo cargar la cobertura');
+    loadSharedZones(await response.json());
+    if (lastSearch) checkLastSearch();
   } catch (error) {
     console.error(error);
+    const result = document.getElementById('result');
+    result.style.display = 'block';
+    result.className = 'unknown';
+    result.textContent = 'No se pudo cargar el mapa de cobertura. Avísale al administrador.';
   }
 }
-
-function loadGeoJSON(data) {
-  zones.clearLayers();
-
-  const layer = L.geoJSON(data, {
-    style: feature => zoneStyle(
-      feature.properties.zoneType || 'green'
-    ),
-    onEachFeature: (feature, layer) => {
-      layer.zoneType = feature.properties.zoneType || 'green';
-      zones.addLayer(layer);
-    }
-  });
-}
-
-const drawControl = new L.Control.Draw({
-  position: 'topleft',
-  draw: {
-    polygon: {
-      allowIntersection: false,
-      showArea: true,
-      shapeOptions: zoneStyle('green')
-    },
-    rectangle: {
-      shapeOptions: zoneStyle('green')
-    },
-    polyline: false,
-    circle: false,
-    circlemarker: false,
-    marker: false
-  },
-  edit: {
-    featureGroup: zones,
-    remove: true
-  }
-});
-
-map.addControl(drawControl);
-
-map.on(L.Draw.Event.CREATED, function(event) {
-  const type = document.getElementById('zoneType').value;
-  addZone(event.layer, type);
-  checkLastSearch();
-});
-
-map.on(L.Draw.Event.EDITED, function() {
-  saveLocal();
-  checkLastSearch();
-});
-
-map.on(L.Draw.Event.DELETED, function() {
-  saveLocal();
-  checkLastSearch();
-});
 
 function pointInside(point, polygon) {
   const x = point.lng;
@@ -371,19 +268,10 @@ function pointInside(point, polygon) {
 
 function checkPoint(latlng) {
   let green = false;
-  let red = false;
-
   zones.eachLayer(layer => {
-    if (layer instanceof L.Polygon &&
-        pointInside(latlng, layer)) {
-      if (layer.zoneType === 'red') red = true;
-      else green = true;
-    }
+    if (layer instanceof L.Polygon && pointInside(latlng, layer)) green = true;
   });
-
-  if (red) return 'outside';
-  if (green) return 'inside';
-  return 'unknown';
+  return green ? 'inside' : 'unknown';
 }
 
 function showResult(type, address) {
@@ -394,15 +282,11 @@ function showResult(type, address) {
     result.className = 'inside';
     result.innerHTML = '✓ DENTRO DE COBERTURA<br><small>' +
       escapeHTML(address) + '</small>';
-  } else if (type === 'outside') {
-    result.className = 'outside';
-    result.innerHTML = '✕ FUERA DE COBERTURA<br><small>' +
-      escapeHTML(address) + '</small>';
   } else {
     result.className = 'unknown';
-    result.innerHTML = '⚠ ZONA SIN DEFINIR<br><small>' +
+    result.innerHTML = '⚠ SIN COBERTURA HABITUAL · COORDINAR CONTIGO<br><small>' +
       escapeHTML(address) +
-      '</small><br><small>No has dibujado una zona que incluya esta dirección.</small>';
+      '</small><br><small>Consulta disponibilidad contigo, especialmente para sábado o domingo. Si no es posible, coordina envío por Shalom.</small>';
   }
 }
 
@@ -478,69 +362,8 @@ document.getElementById('address').addEventListener('keydown', e => {
   if (e.key === 'Enter') searchAddress();
 });
 
-function exportZones() {
-  const data = zones.toGeoJSON();
+fetchSharedZones();
 
-  data.features.forEach((feature, i) => {
-    feature.properties = {
-      zoneType: zones.getLayers()[i].zoneType || 'green'
-    };
-  });
-
-  const blob = new Blob(
-    [JSON.stringify(data, null, 2)],
-    { type: 'application/json' }
-  );
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'zonas-cobertura.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function importZones() {
-  const file = document.getElementById('importFile').files[0];
-
-  if (!file) {
-    alert('Selecciona primero un archivo JSON.');
-    return;
-  }
-
-  const reader = new FileReader();
-
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-
-      if (data.type !== 'FeatureCollection') {
-        throw new Error('Formato incorrecto');
-      }
-
-      loadGeoJSON(data);
-      saveLocal();
-      checkLastSearch();
-      alert('Zonas importadas correctamente.');
-    } catch (error) {
-      alert('El archivo no tiene un formato válido.');
-    }
-  };
-
-  reader.readAsText(file);
-}
-
-function clearZones() {
-  if (!confirm('¿Seguro que deseas borrar todas las zonas de este navegador?')) {
-    return;
-  }
-
-  zones.clearLayers();
-  localStorage.removeItem('deliveryZones');
-  checkLastSearch();
-}
-
-loadLocal();
 </script>
 
 </body>
