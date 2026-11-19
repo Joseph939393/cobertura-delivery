@@ -1,0 +1,547 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobertura de Delivery | Lima y Callao</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f3f5f8;
+  color: #172033;
+}
+
+header {
+  background: #142d4e;
+  color: white;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+header h1 { margin: 0 0 7px; font-size: 23px; }
+header p { margin: 0; font-size: 13px; color: #d5e2f1; }
+
+main {
+  max-width: 1100px;
+  margin: 20px auto;
+  padding: 0 14px;
+}
+
+.panel {
+  background: white;
+  border-radius: 12px;
+  padding: 17px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 9px #00000010;
+}
+
+h2 { font-size: 17px; margin: 0 0 12px; }
+
+input, select, button {
+  font-size: 14px;
+  padding: 12px;
+  border-radius: 7px;
+}
+
+input, select {
+  border: 1px solid #cbd5e1;
+  background: white;
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.search-row input { flex: 1; min-width: 0; }
+
+button {
+  border: 0;
+  cursor: pointer;
+  background: #173d67;
+  color: white;
+  font-weight: bold;
+}
+
+button:disabled { opacity: .6; }
+
+#map {
+  height: 490px;
+  width: 100%;
+  border-radius: 10px;
+  z-index: 1;
+}
+
+#result {
+  margin-top: 12px;
+  padding: 15px;
+  border-radius: 9px;
+  font-weight: bold;
+  text-align: center;
+  display: none;
+}
+
+.inside { background: #dcfce7; color: #166534; }
+.outside { background: #fee2e2; color: #991b1b; }
+.unknown { background: #fef3c7; color: #92400e; }
+
+.admin {
+  border: 1px solid #dbe3ed;
+}
+
+.admin small {
+  display: block;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 8px 0 12px;
+}
+
+.admin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: center;
+}
+
+.admin-row select { flex: 1; min-width: 150px; }
+
+.green { background: #16834c; }
+.red { background: #b83232; }
+.gray { background: #64748b; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 17px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 5px;
+}
+
+footer {
+  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+  padding: 20px;
+}
+
+@media(max-width:600px) {
+  header h1 { font-size: 20px; }
+  #map { height: 420px; }
+  .search-row { flex-direction: column; }
+  .search-row button { width: 100%; }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>📍 Cobertura de Delivery</h1>
+  <p>Lima Metropolitana y Callao</p>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h2>¿A dónde deseas realizar tu entrega?</h2>
+
+    <div class="search-row">
+      <input id="address" type="text"
+        placeholder="Ej. Av. Arequipa 1500, Lince">
+      <button id="searchBtn" onclick="searchAddress()">
+        Buscar dirección
+      </button>
+    </div>
+
+    <div id="result"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Mapa de cobertura</h2>
+
+    <div id="map"></div>
+
+    <div class="legend">
+      <span><i class="dot" style="background:#16834c"></i>Dentro de cobertura</span>
+      <span><i class="dot" style="background:#d93636"></i>Fuera de cobertura</span>
+    </div>
+  </section>
+
+  <section class="panel admin">
+    <h2>⚙️ Administración de zonas</h2>
+
+    <small>
+      Dibuja áreas sobre el mapa. Selecciona primero el tipo
+      de zona y luego utiliza la herramienta de polígono
+      que aparece en el mapa. Puedes dibujar varias áreas.
+    </small>
+
+    <div class="admin-row">
+      <select id="zoneType">
+        <option value="green">Zona CON cobertura</option>
+        <option value="red">Zona SIN cobertura</option>
+      </select>
+
+      <button class="green" onclick="exportZones()">
+        Exportar zonas
+      </button>
+
+      <button class="gray" onclick="clearZones()">
+        Borrar zonas
+      </button>
+    </div>
+
+    <small>
+      Las zonas dibujadas se guardan en este navegador.
+      Usa Exportar zonas para obtener una copia y conservar
+      tu trabajo.
+    </small>
+
+    <div class="admin-row">
+      <input type="file" id="importFile" accept=".json,application/json">
+      <button onclick="importZones()">Importar zonas</button>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Verificador de cobertura de Lima y Callao
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<script>
+const map = L.map('map').setView([-12.075, -77.055], 11);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 19
+}).addTo(map);
+
+const zones = L.featureGroup().addTo(map);
+
+let marker = null;
+let lastSearch = null;
+
+function zoneStyle(type) {
+  const color = type === 'green' ? '#16834c' : '#d93636';
+  return {
+    color: color,
+    fillColor: color,
+    fillOpacity: 0.30,
+    weight: 2
+  };
+}
+
+function addZone(layer, type) {
+  layer.zoneType = type;
+  layer.setStyle(zoneStyle(type));
+  zones.addLayer(layer);
+  saveLocal();
+}
+
+function saveLocal() {
+  const data = zones.toGeoJSON();
+  data.features.forEach((feature, i) => {
+    feature.properties = {
+      zoneType: zones.getLayers()[i].zoneType || 'green'
+    };
+  });
+
+  localStorage.setItem('deliveryZones', JSON.stringify(data));
+}
+
+function loadLocal() {
+  const saved = localStorage.getItem('deliveryZones');
+  if (!saved) return;
+
+  try {
+    loadGeoJSON(JSON.parse(saved));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function loadGeoJSON(data) {
+  zones.clearLayers();
+
+  const layer = L.geoJSON(data, {
+    style: feature => zoneStyle(
+      feature.properties.zoneType || 'green'
+    ),
+    onEachFeature: (feature, layer) => {
+      layer.zoneType = feature.properties.zoneType || 'green';
+      zones.addLayer(layer);
+    }
+  });
+}
+
+const drawControl = new L.Control.Draw({
+  position: 'topleft',
+  draw: {
+    polygon: {
+      allowIntersection: false,
+      showArea: true,
+      shapeOptions: zoneStyle('green')
+    },
+    rectangle: {
+      shapeOptions: zoneStyle('green')
+    },
+    polyline: false,
+    circle: false,
+    circlemarker: false,
+    marker: false
+  },
+  edit: {
+    featureGroup: zones,
+    remove: true
+  }
+});
+
+map.addControl(drawControl);
+
+map.on(L.Draw.Event.CREATED, function(event) {
+  const type = document.getElementById('zoneType').value;
+  addZone(event.layer, type);
+  checkLastSearch();
+});
+
+map.on(L.Draw.Event.EDITED, function() {
+  saveLocal();
+  checkLastSearch();
+});
+
+map.on(L.Draw.Event.DELETED, function() {
+  saveLocal();
+  checkLastSearch();
+});
+
+function pointInside(point, polygon) {
+  const x = point.lng;
+  const y = point.lat;
+  const rings = polygon.getLatLngs();
+
+  function insideRing(ring) {
+    let inside = false;
+
+    for (let i = 0, j = ring.length - 1;
+         i < ring.length; j = i++) {
+      const xi = ring[i].lng, yi = ring[i].lat;
+      const xj = ring[j].lng, yj = ring[j].lat;
+
+      const intersect = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+      if (intersect) inside = !inside;
+    }
+
+    return inside;
+  }
+
+  function insidePolygon(rings) {
+    if (!insideRing(rings[0])) return false;
+
+    for (let i = 1; i < rings.length; i++) {
+      if (insideRing(rings[i])) return false;
+    }
+
+    return true;
+  }
+
+  return insidePolygon(rings);
+}
+
+function checkPoint(latlng) {
+  let green = false;
+  let red = false;
+
+  zones.eachLayer(layer => {
+    if (layer instanceof L.Polygon &&
+        pointInside(latlng, layer)) {
+      if (layer.zoneType === 'red') red = true;
+      else green = true;
+    }
+  });
+
+  if (red) return 'outside';
+  if (green) return 'inside';
+  return 'unknown';
+}
+
+function showResult(type, address) {
+  const result = document.getElementById('result');
+  result.style.display = 'block';
+
+  if (type === 'inside') {
+    result.className = 'inside';
+    result.innerHTML = '✓ DENTRO DE COBERTURA<br><small>' +
+      escapeHTML(address) + '</small>';
+  } else if (type === 'outside') {
+    result.className = 'outside';
+    result.innerHTML = '✕ FUERA DE COBERTURA<br><small>' +
+      escapeHTML(address) + '</small>';
+  } else {
+    result.className = 'unknown';
+    result.innerHTML = '⚠ ZONA SIN DEFINIR<br><small>' +
+      escapeHTML(address) +
+      '</small><br><small>No has dibujado una zona que incluya esta dirección.</small>';
+  }
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;',
+    '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+function checkLastSearch() {
+  if (!lastSearch) return;
+  showResult(checkPoint(lastSearch.latlng), lastSearch.address);
+}
+
+async function searchAddress() {
+  const input = document.getElementById('address');
+  const btn = document.getElementById('searchBtn');
+  const address = input.value.trim();
+
+  if (!address) {
+    alert('Escribe una dirección primero.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Buscando...';
+
+  try {
+    const query = encodeURIComponent(address + ', Lima, Perú');
+    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' + query;
+
+    const response = await fetch(url, {
+      headers: { 'Accept-Language': 'es' }
+    });
+
+    if (!response.ok) throw new Error('Error de búsqueda');
+
+    const results = await response.json();
+
+    if (!results.length) {
+      alert('No encontramos esa dirección. Intenta escribirla con más detalles.');
+      return;
+    }
+
+    const place = results[0];
+    const latlng = L.latLng(
+      parseFloat(place.lat),
+      parseFloat(place.lon)
+    );
+
+    lastSearch = { latlng, address: address };
+
+    map.setView(latlng, 16);
+
+    if (marker) map.removeLayer(marker);
+
+    marker = L.marker(latlng).addTo(map)
+      .bindPopup(escapeHTML(address))
+      .openPopup();
+
+    showResult(checkPoint(latlng), address);
+
+  } catch (error) {
+    alert('No se pudo buscar la dirección. Comprueba tu conexión e inténtalo nuevamente.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Buscar dirección';
+  }
+}
+
+document.getElementById('address').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchAddress();
+});
+
+function exportZones() {
+  const data = zones.toGeoJSON();
+
+  data.features.forEach((feature, i) => {
+    feature.properties = {
+      zoneType: zones.getLayers()[i].zoneType || 'green'
+    };
+  });
+
+  const blob = new Blob(
+    [JSON.stringify(data, null, 2)],
+    { type: 'application/json' }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'zonas-cobertura.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importZones() {
+  const file = document.getElementById('importFile').files[0];
+
+  if (!file) {
+    alert('Selecciona primero un archivo JSON.');
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+
+      if (data.type !== 'FeatureCollection') {
+        throw new Error('Formato incorrecto');
+      }
+
+      loadGeoJSON(data);
+      saveLocal();
+      checkLastSearch();
+      alert('Zonas importadas correctamente.');
+    } catch (error) {
+      alert('El archivo no tiene un formato válido.');
+    }
+  };
+
+  reader.readAsText(file);
+}
+
+function clearZones() {
+  if (!confirm('¿Seguro que deseas borrar todas las zonas de este navegador?')) {
+    return;
+  }
+
+  zones.clearLayers();
+  localStorage.removeItem('deliveryZones');
+  checkLastSearch();
+}
+
+loadLocal();
+</script>
+
+</body>
+</html>
